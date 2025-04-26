@@ -67,9 +67,6 @@ To run the analysis locally, follow these steps:
 
 This project demonstrates the feasibility of using microbiome-based classifiers for the early detection of colorectal cancer. By identifying key microbial species that are associated with CRC, this project lays the groundwork for developing non-invasive diagnostic tools that can improve early detection and patient outcomes.
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgements
 
