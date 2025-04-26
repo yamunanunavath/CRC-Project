@@ -1,0 +1,124 @@
+---
+title: "Colerectal Cancer"
+author: "Yamuna Nunavath"
+date: "2025-04-26"
+---
+```{r}
+library(tidyverse)
+
+# Read Kraken2 report
+kraken_data <- read_tsv("kraken2_report.txt", col_names = FALSE, comment = "#")
+
+# Assign column names
+colnames(kraken_data) <- c("Percent", "Clade_Reads", "Taxon_Reads", "Rank", "TaxID", "Name")
+
+# Filter for species level (Rank S)
+species_data <- kraken_data %>%
+  filter(Rank == "S") %>%
+  mutate(
+    Species = str_trim(Name),
+    Relative_Abundance = Percent / 100
+  ) %>%
+  select(Species, Relative_Abundance)
+
+# Save cleaned species table
+write_csv(species_data, "species_abundance_cleaned.csv")
+
+
+
+```
+```{r}
+top_species <- species_data %>%
+  arrange(desc(Relative_Abundance)) %>%
+  slice(1:10)
+
+ggplot(top_species, aes(x = reorder(Species, -Relative_Abundance), y = Relative_Abundance)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top 10 Species in CRC Sample", x = "Species", y = "Relative Abundance")
+
+
+```
+
+
+```{r}
+library(ggplot2)
+top10 <- species_data %>% top_n(10, Relative_Abundance)
+ggplot(top10, aes(x = "", y = Relative_Abundance, fill = Species)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar(theta = "y")
+
+
+
+```
+
+```{r}
+library(tidyverse)
+
+# Load the Kraken2 report file (replace with your filename if needed)
+df <- read_tsv("kraken2_report.txt", col_names = FALSE)
+colnames(df) <- c("Percent", "Clade_Reads", "Taxon_Reads", "Rank", "TaxID", "Name")
+
+# Extract species-level rows (Rank == "S")
+species_data <- df %>%
+  filter(Rank == "S") %>%
+  mutate(Species = str_trim(Name),
+         Abundance = Percent / 100) %>%
+  select(Species, Abundance)
+
+## Step 1: Simulate species data for 5 samples
+set.seed(42)
+sim_data <- map_dfc(1:5, ~ round(species_data$Abundance * runif(nrow(species_data), 0.8, 1.2), 4))
+colnames(sim_data) <- paste0("Sample", 1:5)
+sim_data <- bind_cols(Species = species_data$Species, sim_data)
+
+# Step 2: Pivot longer then wider to format for ML
+otu_long <- sim_data %>%
+  pivot_longer(-Species, names_to = "SampleID", values_to = "Abundance") %>%
+  pivot_wider(names_from = Species, values_from = Abundance)
+
+# Step 3: Fix column names (species names) for formula use
+colnames(otu_long) <- make.names(colnames(otu_long), unique = TRUE)
+
+# Step 4: Add mock metadata
+metadata <- tibble(
+  SampleID = paste0("Sample", 1:5),
+  Group = c("CRC", "CRC", "Healthy", "Healthy", "CRC")
+)
+
+# Step 5: Join metadata with abundance table
+ml_data <- left_join(metadata, otu_long, by = "SampleID") %>%
+  mutate(Group = as.factor(Group))
+
+# Step 6: Prepare clean ML matrix
+train_clean <- ml_data %>%
+  select(-SampleID) %>%
+  mutate(across(where(is.character), ~ as.numeric(.)))
+
+# Step 7: Run the Random Forest model
+library(randomForest)
+set.seed(123)
+rf_model <- randomForest(Group ~ ., data = train_clean, importance = TRUE)
+
+# Step 8: Get top 10 features
+importance_df <- importance(rf_model) %>%
+  as.data.frame() %>%
+  rownames_to_column("Species") %>%
+  arrange(desc(MeanDecreaseGini)) %>%
+  slice(1:10)
+
+# Step 9: Plot feature importance
+library(ggplot2)
+ggplot(importance_df, aes(x = reorder(Species, MeanDecreaseGini), y = MeanDecreaseGini)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Microbial Biomarkers (Simulated)", x = "Species", y = "Importance")
+
+```
+```{r}
+head(species_data)
+nrow(species_data)
+
+```
+
+

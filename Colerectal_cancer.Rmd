@@ -1,0 +1,357 @@
+---
+title: "Colerectal Cancer"
+author: "Yamuna Nunavath"
+date: "2025-04-26"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  fig.path = "figures/",    # all figures go into “figures/”
+  dev = "png",              # or "pdf", "svg"…
+  dpi = 300,                # good resolution
+  fig.width = 6, fig.height = 4
+)
+
+options(repos = c(CRAN = "https://cran.rstudio.com"))
+
+# Install and load necessary libraries
+install.packages("ggplot2")
+install.packages("dplyr")
+install.packages("factoextra")
+install.packages("cluster")
+install.packages("caret")
+
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(factoextra)
+library(cluster)
+library(reticulate)
+
+# For biom, you might need to use reticulate to access Python's biom-format
+biom <- import("biom")
+
+
+```
+
+```{r}
+# Load the data (assuming data is already available in biom_data)
+biom_data <- read.csv("/Users/yamunanunavath/Downloads/Data Harmonizing/kraken2_biom_data.csv")
+
+# Rename columns for clarity
+colnames(biom_data) <- c("OTU_ID", "Kraken2_Abundance")
+
+# View the first few rows of the data
+head(biom_data)
+```
+
+```{r}
+# Log-transformation of Kraken2 abundance (log10)
+biom_data$log_kraken2_abundance <- log10(biom_data$Kraken2_Abundance + 1)  # Adding 1 to avoid log(0)
+
+# View first few rows of the log-transformed data
+head(biom_data)
+
+```
+
+```{r}
+# Plot distribution of Kraken2 abundance values
+ggplot(biom_data, aes(x = Kraken2_Abundance)) +
+  geom_histogram(binwidth = 50000, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Kraken2 Abundance Values", x = "Abundance", y = "Frequency") +
+  theme_minimal()
+
+# Plot distribution of log-transformed Kraken2 abundance values
+ggplot(biom_data, aes(x = log_kraken2_abundance)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribution of Log-Transformed Kraken2 Abundance Values", 
+       x = "Log(Abundance)", y = "Frequency") +
+  theme_minimal()
+
+
+```
+
+
+
+
+```{r}
+# Calculate IQR to detect outliers
+IQR_value <- IQR(biom_data$log_kraken2_abundance)
+Q1 <- quantile(biom_data$log_kraken2_abundance, 0.25)
+Q3 <- quantile(biom_data$log_kraken2_abundance, 0.75)
+
+# Define the range for non-outlier values
+lower_bound <- Q1 - 1.5 * IQR_value
+upper_bound <- Q3 + 1.5 * IQR_value
+
+# Identify outliers
+outliers <- biom_data$log_kraken2_abundance[biom_data$log_kraken2_abundance < lower_bound | biom_data$log_kraken2_abundance > upper_bound]
+outliers
+
+```
+
+6. Boxplot and Outlier Visualization:
+
+```{r}
+# Boxplot of log-transformed Kraken2 abundance
+boxplot(biom_data$log_kraken2_abundance, main = "Log-Transformed Kraken2 Abundance", 
+        ylab = "Log(Abundance)", col = "lightblue", border = "black", outline = TRUE)
+
+# View outliers in terms of original Kraken2 abundance
+outlier_OTUs <- biom_data[biom_data$log_kraken2_abundance %in% outliers, ]
+head(outlier_OTUs)
+
+# Boxplot for outlier OTUs
+boxplot(outlier_OTUs$log_kraken2_abundance, main = "Outlier Kraken2 Abundance (Log-Transformed)",
+        ylab = "Log(Abundance)", col = "lightgreen", border = "black", outline = TRUE)
+
+
+```
+
+
+7. Principal Component Analysis (PCA):
+
+```{r}
+# Perform PCA on multiple features (log-transformed abundance and other features if you have them)
+pca_result <- prcomp(biom_data[, c("Kraken2_Abundance", "log_kraken2_abundance")], scale. = TRUE)
+
+# PCA plot (PC1 vs PC2)
+plot(pca_result$x[, 1], pca_result$x[, 2], 
+     main = "PCA of Kraken2 Abundance", 
+     xlab = "PC1", ylab = "PC2", col = "blue", pch = 19)
+
+
+
+```
+
+
+
+
+8. Clustering (K-means and Hierarchical Clustering):
+
+```{r}
+
+# Perform K-means clustering (3 clusters in this example)
+set.seed(123)
+kmeans_result <- kmeans(biom_data$log_kraken2_abundance, centers = 3)  # Adjust the number of clusters (k) if needed
+biom_data$cluster <- as.factor(kmeans_result$cluster)
+
+# Visualize K-means clustering result with PCA (PC1 vs PC2)
+ggplot(biom_data, aes(x = pca_result$x[, 1], y = pca_result$x[, 2], color = cluster)) +
+  geom_point() +
+  labs(title = "PCA with K-means Clustering")
+
+```
+
+
+
+# Elbow Method for K-means Clustering
+
+```{r}
+# Calculate WSS for different values of k (Elbow Method)
+wss <- numeric(10)
+for (k in 1:10) {
+  kmeans_result <- kmeans(biom_data$log_kraken2_abundance, centers = k)
+  wss[k] <- kmeans_result$tot.withinss
+}
+
+# Plot the elbow method
+plot(1:10, wss, type = "b", main = "Elbow Method for Optimal k", 
+     xlab = "Number of Clusters", ylab = "Total Within-cluster Sum of Squares")
+
+```
+
+
+9. Statistical Tests (ANOVA, Kruskal-Wallis):
+
+```{r}
+# One-Way ANOVA to compare log-transformed Kraken2 abundance between clusters
+anova_result <- aov(log_kraken2_abundance ~ cluster, data = biom_data)
+summary(anova_result)
+
+# Kruskal-Wallis test for comparing clusters
+kruskal_test <- kruskal.test(log_kraken2_abundance ~ cluster, data = biom_data)
+print(kruskal_test)
+
+
+```
+
+10. Post-hoc Analysis (Tukey HSD):
+
+```{r}
+# Tukey HSD post-hoc test
+tukey_result <- TukeyHSD(anova_result)
+
+# Display summary of Tukey HSD results
+summary(tukey_result)
+
+# Plot the Tukey HSD results
+plot(tukey_result)
+
+
+
+```
+
+
+
+11. Clustering Visualization and Interpretation:
+
+```{r}
+# Visualize K-means clusters in 1D (density plot)
+ggplot(biom_data, aes(x = log_kraken2_abundance, color = cluster)) +
+  geom_density() +
+  labs(title = "Density Plot of Log-Transformed Kraken2 Abundance by Cluster",
+       x = "Log(Abundance)", y = "Density") +
+  theme_minimal()
+
+# Boxplot of `log_kraken2_abundance` for each cluster
+ggplot(biom_data, aes(x = cluster, y = log_kraken2_abundance, fill = cluster)) +
+  geom_boxplot() +
+  labs(title = "Boxplot of Log-Transformed Kraken2 Abundance by Cluster", 
+       x = "Cluster", y = "Log(Abundance)") +
+  theme_minimal()
+```
+
+
+12. Cluster Profiling and Summary Statistics:
+
+```{r}
+cluster_summary <- biom_data %>%
+  group_by(cluster) %>%
+  summarise(
+    mean_abundance = mean(log_kraken2_abundance, na.rm = TRUE),
+    median_abundance = median(log_kraken2_abundance, na.rm = TRUE),
+    sd_abundance = sd(log_kraken2_abundance, na.rm = TRUE),
+    min_abundance = min(log_kraken2_abundance, na.rm = TRUE),
+    max_abundance = max(log_kraken2_abundance, na.rm = TRUE)
+  )
+
+print(cluster_summary)
+
+
+```
+
+
+13. Visualizing Differences Between Clusters:
+
+```{r}
+# Violin plot to visualize the distribution of log_kraken2_abundance per cluster
+ggplot(biom_data, aes(x = cluster, y = log_kraken2_abundance, fill = cluster)) +
+  geom_violin() +
+  labs(title = "Violin Plot of Log-Transformed Kraken2 Abundance by Cluster", 
+       x = "Cluster", y = "Log(Abundance)") +
+  theme_minimal()
+
+
+
+```
+
+
+```{r}
+ggplot(biom_data, aes(x = log_kraken2_abundance, y = Kraken2_Abundance, color = cluster)) +
+  geom_point() +
+  labs(title = "Scatter Plot of Log-Transformed Kraken2 Abundance vs Original Kraken2 Abundance by Cluster")
+
+```
+
+
+14. Cluster Validation:
+
+```{r}
+# Perform PCA on the features
+pca_res <- prcomp(biom_data[, c("Kraken2_Abundance", "log_kraken2_abundance")], scale. = TRUE)
+
+# Silhouette score for clustering
+library(cluster)
+
+# Calculate silhouette score
+silhouette_score <- silhouette(kmeans_result$cluster, dist(pca_res$x[, 1:2]))
+
+# Plot silhouette score
+plot(silhouette_score, main = "Silhouette Plot for K-means Clustering")
+
+```
+
+
+15. Random Forest:
+
+```{r}
+install.packages("randomForest")
+library(randomForest)
+
+# Ensure that the target variable 'cluster' is a factor
+biom_data$cluster <- as.factor(biom_data$cluster)
+
+rf_model <- randomForest(cluster ~ log_kraken2_abundance + Kraken2_Abundance, data = biom_data)
+
+# Print the model summary
+print(rf_model)
+
+# Check the importance of the features
+importance(rf_model)
+
+# Plot the feature importance
+varImpPlot(rf_model)
+```
+
+
+```{r}
+library(caret)
+
+# Define the training control
+train_control <- trainControl(method = "cv", number = 10)
+
+# Train the random forest model
+rf_tuned <- train(cluster ~ log_kraken2_abundance + Kraken2_Abundance, 
+                  data = biom_data, 
+                  method = "rf", 
+                  trControl = train_control, 
+                  tuneGrid = expand.grid(mtry = c(1, 2)))  # Valid mtry values
+print(rf_tuned)
+
+
+```
+```{r}
+varImpPlot(rf_tuned$finalModel)
+
+```
+
+```{r}
+svm_tuned <- train(cluster ~ log_kraken2_abundance + Kraken2_Abundance, 
+                   data = biom_data, 
+                   method = "svmRadial", 
+                   trControl = train_control, 
+                   tuneGrid = expand.grid(sigma = c(0.1, 0.5), C = c(1, 10)))
+print(svm_tuned)
+
+```
+
+
+16. Cross_validation:
+
+```{r}
+
+# Define the cross-validation method
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold CV
+
+# Fit the Random Forest model with cross-validation
+rf_cv_model <- train(cluster ~ log_kraken2_abundance + Kraken2_Abundance, 
+                     data = biom_data, 
+                     method = "rf", 
+                     trControl = train_control)
+
+# Print the cross-validation results
+print(rf_cv_model)
+
+```
+
+```{r}
+
+
+```
+
+
+
