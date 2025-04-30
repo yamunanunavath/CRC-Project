@@ -47,7 +47,7 @@ To run the analysis locally, follow these steps:
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yamunanunavath/Colerectal_cancer.git
+   git clone https://github.com/yamunanunavath/CRC-Project.git
    ```
 
 2. Install the necessary R packages:
